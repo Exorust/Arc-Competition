@@ -9,6 +9,7 @@
 import numpy as np
 from abstract_and_reason.graphics import Graphics
 from abstract_and_reason.assets import load_json
+from abstract_and_reason.dsl.primitives import find_function_names
 
 
 class Solver:
@@ -39,6 +40,24 @@ class Solver:
             self.base_path + 'arc-agi_test_challenges.json')
         self.sample_submission = load_json(
             self.base_path + 'sample_submission.json')
+        
+        # Load model directly
+        from transformers import AutoTokenizer, AutoModelForCausalLM
+
+        self.tokenizer = AutoTokenizer.from_pretrained("stabilityai/stable-code-3b")
+        self.model = AutoModelForCausalLM.from_pretrained("stabilityai/stable-code-3b")
+
+    # Define a function to generate text from a prompt
+    def generate_text(self, prompt, max_length=100, temperature=0.7):
+        # Tokenize the input prompt
+        input_ids = self.tokenizer(prompt, return_tensors="pt").input_ids
+        
+        # Generate the output
+        output = self.model.generate(input_ids, max_length=max_length, temperature=temperature)
+        
+        # Decode the output tokens to get the generated text
+        generated_text = self.tokenizer.decode(output[0], skip_special_tokens=True)
+        return generated_text
 
     def predict(self, puzzle_inps_train, puzzle_outs_train, puzzle_inps_test, puzzle_outs_test=None):
         """
@@ -55,6 +74,9 @@ class Solver:
         """
         try:
             # Your board prediction solution goes here !
+            prompt = 'Write python DSL code to solve the puzzle.\n DSL:{dsl} \nInput: {input}\nOutput: {output}.'
+            prompt = prompt.format(dsl=find_function_names("C:\\Users\\chand\\Courses\\Fall-24\\ARC\\Arc-Competition\\arc-agi-genesis\\source\\abstract_and_reason\\dsl\\dsl.py"), input=puzzle_inps_train, output=puzzle_outs_train)
+            answers = self.generate_text(prompt)
             raise NotImplementedError
         except Exception:
             answers = self.random_prediction(
@@ -89,7 +111,7 @@ class Solver:
         Raises:
             NotImplementedError: This function is not implemented.
         """
-        raise NotImplementedError
+        # raise NotImplementedError
 
     def validate(self):
         """
@@ -99,7 +121,7 @@ class Solver:
             NotImplementedError: This function is not implemented.
         """
         # Have you trained a model? use this function to validate it.
-        raise NotImplementedError
+        # raise NotImplementedError
 
     def test(self):
         """
@@ -109,7 +131,7 @@ class Solver:
             NotImplementedError: This function is not implemented.
         """
         # Have you trained a model? use this function to test it.
-        raise NotImplementedError
+        # raise NotImplementedError
 
     def display_train(self, task_id, puzzle_inps_train, puzzle_outs_train):
         """
