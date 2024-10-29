@@ -45,10 +45,13 @@ class Solver:
         from transformers import AutoTokenizer, AutoModelForCausalLM
 
         self.tokenizer = AutoTokenizer.from_pretrained("stabilityai/stable-code-3b")
-        self.model = AutoModelForCausalLM.from_pretrained("stabilityai/stable-code-3b")
+        self.model = AutoModelForCausalLM.from_pretrained(
+            "stabilityai/stable-code-3b",
+            device_map="auto"  # Automatically assigns CUDA devices if available
+        )
 
     # Define a function to generate text from a prompt
-    def generate_text(self, prompt, max_length=100, temperature=0.7):
+    def generate_text(self, prompt, max_length=1000, temperature=0.7):
         # Tokenize the input prompt
         input_ids = self.tokenizer(prompt, return_tensors="pt").input_ids
         
@@ -80,7 +83,9 @@ class Solver:
             print(prompt)
             print(answers)
             # raise NotImplementedError
-        except Exception:
+        except Exception as e:
+            print(e)
+            print("Error in prediction")
             answers = self.random_prediction(
                 puzzle_outs_train, puzzle_inps_test)
 
