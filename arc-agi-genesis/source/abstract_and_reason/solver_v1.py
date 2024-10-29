@@ -77,7 +77,9 @@ class Solver:
             prompt = 'Write python DSL code to solve the puzzle.\n DSL:{dsl} \nInput: {input}\nOutput: {output}.'
             prompt = prompt.format(dsl=find_function_names("C:\\Users\\chand\\Courses\\Fall-24\\ARC\\Arc-Competition\\arc-agi-genesis\\source\\abstract_and_reason\\dsl\\dsl.py"), input=puzzle_inps_train, output=puzzle_outs_train)
             answers = self.generate_text(prompt)
-            raise NotImplementedError
+            print(prompt)
+            print(answers)
+            # raise NotImplementedError
         except Exception:
             answers = self.random_prediction(
                 puzzle_outs_train, puzzle_inps_test)
