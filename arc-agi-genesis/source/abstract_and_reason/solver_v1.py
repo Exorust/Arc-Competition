@@ -6,10 +6,16 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-import numpy as np
-from abstract_and_reason.graphics import Graphics
+import json
+import importlib
+from transformers import AutoTokenizer, AutoModelForCausalLM
 from abstract_and_reason.assets import load_json
+from abstract_and_reason.graphics import Graphics
+import abstract_and_reason.dsl.solvers as solvers
 from abstract_and_reason.dsl.primitives import find_function_names
+import inspect
+
+import numpy as np
 
 
 class Solver:
@@ -47,14 +53,103 @@ class Solver:
         self.tokenizer = AutoTokenizer.from_pretrained("stabilityai/stable-code-3b")
         self.model = AutoModelForCausalLM.from_pretrained(
             "stabilityai/stable-code-3b",
-            device_map="auto"  # Automatically assigns CUDA devices if available
+            device_map="cpu"  # Automatically assigns CUDA devices if available
         )
+        
+    def load_grids(self, tasknumber):
+        """
+        Load the grids for a specific task number, returning both train and test grids.
+
+        Args:
+            tasknumber (str): The task number as a string.
+
+        Returns:
+            tuple: A tuple containing:
+                - train_grids (list): List of dicts with 'input' and 'output' grids from the training set.
+                - test_grid (dict): A dict with the 'input' grid from the test set.
+        """
+        # Load the JSON data for the specific task
+        # or use self.evaluation_challenges or self.test_challenges, as applicable
+        task_data = self.training_challenges[tasknumber]
+
+        # Extract train grids (which contain both input and output)
+        train_grids = task_data.get("train", [])
+
+        # Extract the first test grid (which contains only input)
+        test_grid = task_data.get("test", [{}])[0].get("input", None)
+
+        return train_grids, test_grid
+    
+    def get_solver_function(self, tasknumber):
+        """Dynamically load the solver function for a specific task."""
+        module_name = 'solvers'  # Adjust this if the file is named differently
+        function_name = f'solve_{tasknumber}'
+        solver_function = getattr(solvers, function_name)
+        function_code = inspect.getsource(solver_function)
+        return function_code
+    
+    def generate_few_shot_prompt(self, tasknumbers):
+        """Generate a few-shot prompt from multiple tasks using their training examples."""
+        prompt = "Given examples of input-output grids and the DSL code that solves them, write DSL code to solve the new ARC problem. Use the provided DSL primitives to construct a solution.\n"
+
+        for tasknumber in tasknumbers:
+            # Load train grids and test grid for each task
+            # We only need the train grids for few-shot examples
+            train_grids, _ = self.load_grids(tasknumber)
+
+            # Retrieve the solver function's source code as a string
+            solver_code = self.get_solver_function(tasknumber)
+            prompt += "Here is an example of input-output grids and the DSL code that solves them:\n"
+            # Add multiple examples from `train` for this task
+            for example in train_grids:
+                input_grid = example['input']
+                output_grid = example['output']
+
+                example_str = f"""
+                Input Grid: {input_grid}
+                Expected Output: {output_grid}
+                """
+                prompt += example_str
+            prompt += f"\nDSL Program that solves the above grids: {solver_code}"
+
+        return prompt
+
+
+    def predict(self, tasknumber):
+        """
+        Predicts the outputs for the test puzzle based on training examples from few-shot tasks.
+        """
+        try:
+            # Specify task numbers for few-shot examples
+            tasknumbers = ['67a3c6ac']
+
+            # Generate few-shot prompt using the training examples from multiple tasks
+            few_shot_prompt = self.generate_few_shot_prompt(tasknumbers)
+            few_shot_prompt += "Use the provided DSL primitives to construct a solution:\n" + " ".join(find_function_names(
+                "/Users/abdelazimlokma/Desktop/Desktop/Uni/Fall 24/CS 599 AGI/Arc-Competition/arc-agi-genesis/source/abstract_and_reason/dsl/dsl.py"))
+
+            # Load train grids and test grid for the current task
+            _, test_grid = self.load_grids(tasknumber)
+
+            # Append the few-shot examples and the final test input for the current task
+            prompt = f"{few_shot_prompt}\nCurrent Task Test Input:\n{test_grid}\n Output only the DSL code needed to solve this test grid."
+
+            # Generate output for the current test input
+            output = self.generate_text(prompt)
+
+            return output
+
+        except Exception as e:
+            print("Error in prediction:", e)
+            return None
+
 
     # Define a function to generate text from a prompt
-    def generate_text(self, prompt, max_length=1000, temperature=0.7):
+    def generate_text(self, prompt, max_length=4000, temperature=0.7):
         # Tokenize the input prompt
         input_ids = self.tokenizer(prompt, return_tensors="pt").input_ids
-        
+        input_ids.to('cpu')
+        self.model.to('cpu')
         # Generate the output
         output = self.model.generate(input_ids, max_length=max_length, temperature=temperature)
         
@@ -62,34 +157,7 @@ class Solver:
         generated_text = self.tokenizer.decode(output[0], skip_special_tokens=True)
         return generated_text
 
-    def predict(self, puzzle_inps_train, puzzle_outs_train, puzzle_inps_test, puzzle_outs_test=None):
-        """
-        Predicts the outputs for test puzzles based on training inputs and outputs.
 
-        Args:
-            puzzle_inps_train (list): Training input puzzles.
-            puzzle_outs_train (list): Training output puzzles.
-            puzzle_inps_test (list): Test input puzzles.
-            puzzle_outs_test (list, optional): Test output puzzles, used for validation purposes.
-
-        Returns:
-            list: Predicted outputs for the test puzzles.
-        """
-        try:
-            # Your board prediction solution goes here !
-            prompt = 'Write python DSL code to solve the puzzle.\n DSL:{dsl} \nInput: {input}\nOutput: {output}.'
-            prompt = prompt.format(dsl=find_function_names("C:\\Users\\chand\\Courses\\Fall-24\\ARC\\Arc-Competition\\arc-agi-genesis\\source\\abstract_and_reason\\dsl\\dsl.py"), input=puzzle_inps_train, output=puzzle_outs_train)
-            answers = self.generate_text(prompt)
-            print(prompt)
-            print(answers)
-            # raise NotImplementedError
-        except Exception as e:
-            print(e)
-            print("Error in prediction")
-            answers = self.random_prediction(
-                puzzle_outs_train, puzzle_inps_test)
-
-        return answers
 
     def random_prediction(self, puzzle_outs_train, puzzle_inps_test):
         """
